@@ -1,10 +1,11 @@
 import Web3 from "web3";
-import metaCoinArtifact from "../../build/contracts/MetaCoin.json";
+import starNotaryContract from "../../build/contracts/StarNotary.json";
 
 const App = {
   web3: null,
-  account: null,
-  meta: null,
+  accounts: null,
+  instance: null,
+  token:parseInt(window.localStorage.getItem('tokenCnt')) || 1,
 
   start: async function() {
     const { web3 } = this;
@@ -12,47 +13,51 @@ const App = {
     try {
       // get contract instance
       const networkId = await web3.eth.net.getId();
-      const deployedNetwork = metaCoinArtifact.networks[networkId];
-      this.meta = new web3.eth.Contract(
-        metaCoinArtifact.abi,
+      const deployedNetwork = starNotaryContract.networks[networkId];
+      this.instance = new web3.eth.Contract(
+        starNotaryContract.abi,
         deployedNetwork.address,
       );
 
       // get accounts
       const accounts = await web3.eth.getAccounts();
-      this.account = accounts[0];
+      this.accounts = accounts;
+      this.getStars()
 
-      this.refreshBalance();
     } catch (error) {
       console.error("Could not connect to contract or chain.");
     }
   },
 
-  refreshBalance: async function() {
-    const { getBalance } = this.meta.methods;
-    const balance = await getBalance(this.account).call();
-
-    const balanceElement = document.getElementsByClassName("balance")[0];
-    balanceElement.innerHTML = balance;
+  getStars : async function() {
+      const ul = document.getElementById('stars')
+      for (var i = 1; i <= this.token; i++) {
+          const star = await this.instance.methods.starTokenMap(i).call()
+          const price = await this.instance.methods.starsForSale(i).call()
+          ul.innerHTML = `${ul.innerHTML}<li>${star}, ${price}</li>`
+      }
   },
 
-  sendCoin: async function() {
-    const amount = parseInt(document.getElementById("amount").value);
-    const receiver = document.getElementById("receiver").value;
+  createStar : async function() {
 
-    this.setStatus("Initiating transaction... (please wait)");
+      const token = ++this.token
+      const starname = document.getElementById('starname').value
+      const price = parseInt(document.getElementById('price').value)
+      console.log(`${starname}, ${price}, ${token}`)
 
-    const { sendCoin } = this.meta.methods;
-    await sendCoin(receiver, amount).send({ from: this.account });
-
-    this.setStatus("Transaction complete!");
-    this.refreshBalance();
+      await this.instance.methods.createStar(document.getElementById('starname').value, token).send({from : this.accounts[0]})
+      console.log("createStar works")
+      await this.instance.methods.putUpForSale(token, parseInt(document.getElementById('price').value)).send({from : this.accounts[0]})
+      console.log("putUpForSale works")
+      const starName = await this.instance.methods.starTokenMap(token).call()
+      console.log(`starName is ${starName}`)
+      window.localStorage.setItem('tokenCnt', token)
+      const ul = document.getElementById('stars')
+      ul.innerHTML = `${ul.innerHTML}<li>${starname}, ${price}</li>`
+      document.getElementById('starname').value = ''
+      document.getElementById('price').value = ''
   },
 
-  setStatus: function(message) {
-    const status = document.getElementById("status");
-    status.innerHTML = message;
-  },
 };
 
 window.App = App;
@@ -68,7 +73,7 @@ window.addEventListener("load", function() {
     );
     // fallback - use your fallback strategy (local node / hosted node + in-dapp id mgmt / fail)
     App.web3 = new Web3(
-      new Web3.providers.HttpProvider("http://127.0.0.1:9545"),
+      new Web3.providers.HttpProvider("http://127.0.0.1:8545"),
     );
   }
 
